@@ -6,7 +6,7 @@ import (
 
 	"fmt"
 
-	q "github.com/openchami/quack/quack"
+	q "github.com/OpenCHAMI/quack/quack"
 )
 
 // Define your Go struct

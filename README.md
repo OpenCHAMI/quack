@@ -7,7 +7,7 @@ QuackQuack is a Go library for managing DuckDB databases with support for period
 To install DuckDBStorage, use `go get`:
 
 ```sh
-go get github.com/OpenCHAMI/quack
+go get github.com/OpenCHAMI/quack/quack
 ```
 
 ## Usage
