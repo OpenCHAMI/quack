@@ -1,4 +1,4 @@
-module github.com/openchami/quack
+module github.com/OpenCHAMI/quack
 
 go 1.21
 
