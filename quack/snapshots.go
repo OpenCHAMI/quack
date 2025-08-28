@@ -46,8 +46,11 @@ func (d *DuckDBStorage) SnapshotParquet(ctx context.Context, path string) error 
 	if !strings.HasSuffix(escapedPath, "/") {
 		escapedPath += "/"
 	}
-	// Ensure the directory exists
-	os.MkdirAll(escapedPath, 0755)
+	// Ensure the directory exists; return error if creation fails
+	if err := os.MkdirAll(escapedPath, 0755); err != nil {
+		log.Error().Err(err).Str("path", escapedPath).Msg("Failed to create snapshot directory")
+		return err
+	}
 
 	// Construct the SQL statement
 	sql := fmt.Sprintf(`INSTALL parquet;
@@ -68,13 +71,16 @@ func (d *DuckDBStorage) SnapshotParquet(ctx context.Context, path string) error 
 }
 
 func (d *DuckDBStorage) RestoreParquet(path string) error {
-	// Load the appropriate extensions for our restore to work correctly
-	_, err := d.db.Exec(``)
-	if err != nil {
-		return err
+	// Ensure extensions are available
+	if err := d.loadExtensions(); err != nil {
+		return fmt.Errorf("failed to load extensions before restore: %w", err)
 	}
+
 	// Read and execute schema.sql to set up the database schema
 	schemaFile := filepath.Join(path, "schema.sql")
+	if _, err := os.Stat(schemaFile); err != nil {
+		return fmt.Errorf("schema.sql not found in snapshot path %q: %w", path, err)
+	}
 	if err := d.executeSQLFile(schemaFile); err != nil {
 		return fmt.Errorf("error executing schema.sql: %w", err)
 	}
@@ -82,6 +88,9 @@ func (d *DuckDBStorage) RestoreParquet(path string) error {
 
 	// Read and execute load.sql to load Parquet files
 	loadFile := filepath.Join(path, "load.sql")
+	if _, err := os.Stat(loadFile); err != nil {
+		return fmt.Errorf("load.sql not found in snapshot path %q: %w", path, err)
+	}
 	if err := d.executeSQLFile(loadFile); err != nil {
 		return fmt.Errorf("error executing load.sql: %w", err)
 	}
@@ -101,11 +110,22 @@ func (d *DuckDBStorage) executeSQLFile(filePath string) error {
 	var sb strings.Builder
 	for scanner.Scan() {
 		line := scanner.Text()
+		// Preserve line breaks so multiline statements remain valid
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
 		sb.WriteString(line)
-		if strings.HasSuffix(strings.TrimSpace(line), ";") {
-			_, err := d.db.Exec(sb.String())
-			if err != nil {
-				return err
+
+		trimmed := strings.TrimSpace(line)
+		if strings.HasSuffix(trimmed, ";") {
+			query := strings.TrimSpace(sb.String())
+			// skip empty queries
+			if query == "" || query == ";" {
+				sb.Reset()
+				continue
+			}
+			if _, err := d.db.Exec(query); err != nil {
+				return fmt.Errorf("error executing query %q: %w", query, err)
 			}
 			sb.Reset()
 		}
@@ -113,6 +133,16 @@ func (d *DuckDBStorage) executeSQLFile(filePath string) error {
 
 	if err := scanner.Err(); err != nil {
 		return err
+	}
+
+	// If there's leftover SQL without a trailing semicolon, attempt to execute it
+	if sb.Len() > 0 {
+		query := strings.TrimSpace(sb.String())
+		if query != "" {
+			if _, err := d.db.Exec(query); err != nil {
+				return fmt.Errorf("error executing final query %q: %w", query, err)
+			}
+		}
 	}
 
 	return nil
