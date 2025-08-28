@@ -10,8 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      # Ensure DuckDB has a writable home inside the runner; tests may rely on this.
-      DUCKDB_HOME: ${{ runner.temp }}/duckdb-home
       GOFLAGS: -mod=mod
     steps:
       - name: Checkout
@@ -20,17 +18,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: 1.24.2
+          go-version: '1.24.2'
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ${{ env.GOMODCACHE }}
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Set DUCKDB_HOME environment variable
+        run: echo "DUCKDB_HOME=${{ runner.temp }}/duckdb-home" >> $GITHUB_ENV
+
+      - name: Set GOMODCACHE environment variable
+        run: echo "GOMODCACHE=$(go env GOMODCACHE)" >> $GITHUB_ENV
 
       - name: Ensure DUCKDB_HOME exists
         run: mkdir -p "${{ env.DUCKDB_HOME }}"
@@ -47,10 +41,15 @@ jobs:
 
       - name: Build and run examples
         run: |
-          # Build any example packages under ./example
           for pkg in $(go list ./... | grep '/example' || true); do
             echo "Building $pkg"
             go build -v "$pkg"
-            echo "Running $pkg"
-            ./"$pkg"
+            BIN=$(basename "$pkg")
+            # Try to run the binary if built successfully
+            if [ -f "$BIN" ]; then
+              echo "Running $BIN"
+              ./"$BIN"
+            else
+              echo "Binary $BIN not found, skipping run."
+            fi
           done
