@@ -41,15 +41,10 @@ jobs:
 
       - name: Build and run examples
         run: |
-          for pkg in $(go list ./... | grep '/example' || true); do
-            echo "Building $pkg"
-            go build -v "$pkg"
-            BIN=$(basename "$pkg")
-            # Try to run the binary if built successfully
-            if [ -f "$BIN" ]; then
-              echo "Running $BIN"
-              ./"$BIN"
-            else
-              echo "Binary $BIN not found, skipping run."
-            fi
+          for f in example/*.go; do
+            fname=$(basename "$f" .go)
+            echo "Building $f -> $fname"
+            go build -o "example/$fname" "$f"
+            echo "Running example/$fname"
+            "example/$fname"
           done
