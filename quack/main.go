@@ -89,7 +89,7 @@ func (d *DuckDBStorage) initializeDatabase() error {
 }
 
 func (d *DuckDBStorage) loadExtensions() error {
-	_, err := d.db.Exec("SET autoinstall_known_extensions=1;INSTALL json;LOAD json;INSTALL parquet;LOAD parquet")
+	_, err := d.db.Exec(`SET home_directory='/tmp'; SET autoinstall_known_extensions=1; INSTALL json; LOAD json; INSTALL parquet; LOAD parquet`)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load DuckDB extensions")
 	}
