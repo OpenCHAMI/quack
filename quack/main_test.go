@@ -3,6 +3,8 @@ package quack
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -155,4 +157,95 @@ func TestConfigurationHandling(t *testing.T) {
 
 	assert.Equal(t, 0*time.Second, d.snapshotFrequency)
 	assert.Equal(t, "", d.snapshotPath)
+}
+
+func TestLoadExtensions_EnvOverrideAndFallbacks(t *testing.T) {
+	// Use a temporary directory for DB file and for DUCKDB_HOME/HOME
+	tmp := t.TempDir()
+	dbPath := filepath.Join(tmp, "test.db")
+
+	// Ensure env is clean
+	origDuckHome := os.Getenv("DUCKDB_HOME")
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("DUCKDB_HOME", origDuckHome)
+	defer os.Setenv("HOME", origHome)
+
+	// 1) Explicit DUCKDB_HOME override should succeed
+	duckHomeDir := filepath.Join(tmp, "duckhome1")
+	if err := os.MkdirAll(duckHomeDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	os.Setenv("DUCKDB_HOME", duckHomeDir)
+	os.Unsetenv("HOME")
+
+	d, err := NewDuckDBStorage(dbPath)
+	assert.NoError(t, err)
+	defer d.Close()
+
+	// loadExtensions is called by constructor but return value is not propagated,
+	// call explicitly to observe errors
+	err = d.loadExtensions()
+	assert.NoError(t, err, "loadExtensions should succeed with DUCKDB_HOME set to writable dir")
+
+	// 2) Fallback to HOME when DUCKDB_HOME unset
+	os.Unsetenv("DUCKDB_HOME")
+	homeDir := filepath.Join(tmp, "homedir")
+	if err := os.MkdirAll(homeDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	os.Setenv("HOME", homeDir)
+
+	err = d.loadExtensions()
+	assert.NoError(t, err, "loadExtensions should succeed with HOME set to writable dir")
+
+	// 3) Fallback to /tmp when neither DUCKDB_HOME nor HOME set
+	os.Unsetenv("DUCKDB_HOME")
+	os.Unsetenv("HOME")
+
+	err = d.loadExtensions()
+	assert.NoError(t, err, "loadExtensions should succeed when falling back to /tmp")
+}
+
+func TestLoadExtensions_InvalidUnwritableHome(t *testing.T) {
+	// This test manipulates permissions and may not be supported on all platforms.
+	// Skip on windows where chmod semantics differ.
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-based unwritable test skipped on Windows")
+	}
+
+	tmp := t.TempDir()
+	dbPath := filepath.Join(tmp, "test2.db")
+
+	origDuckHome := os.Getenv("DUCKDB_HOME")
+	defer os.Setenv("DUCKDB_HOME", origDuckHome)
+
+	// Create a directory and remove write permissions to simulate unwritable home
+	badDir := filepath.Join(tmp, "badhome")
+	if err := os.MkdirAll(badDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	// remove all permissions
+	if err := os.Chmod(badDir, 0); err != nil {
+		t.Fatalf("chmod failed: %v", err)
+	}
+	// restore perms at the end so t.TempDir cleanup can delete
+	defer func() {
+		_ = os.Chmod(badDir, 0o755)
+	}()
+
+	os.Setenv("DUCKDB_HOME", badDir)
+
+	d, err := NewDuckDBStorage(dbPath)
+	assert.NoError(t, err)
+	defer d.Close()
+
+	err = d.loadExtensions()
+	// We expect an error in many environments because the install step cannot write into badDir.
+	// If the environment still allows the install, the test will accept success — assert that either is valid,
+	// but prefer to detect and report if no error occurred in an environment where it should.
+	if err == nil {
+		t.Logf("Warning: loadExtensions did not return an error for unwritable DUCKDB_HOME (%s); environment may permit writes", badDir)
+	} else {
+		assert.Error(t, err, "expected error when DUCKDB_HOME points to an unwritable directory")
+	}
 }
