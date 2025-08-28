@@ -3,6 +3,9 @@ package quack
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,9 +92,22 @@ func (d *DuckDBStorage) initializeDatabase() error {
 }
 
 func (d *DuckDBStorage) loadExtensions() error {
-	_, err := d.db.Exec(`SET autoinstall_known_extensions=1; INSTALL json; LOAD json; INSTALL parquet; LOAD parquet`)
+	// Prefer explicit override, then user's HOME, then a safe container default.
+	home := os.Getenv("DUCKDB_HOME")
+	if home == "" {
+		home = os.Getenv("HOME")
+	}
+	if home == "" {
+		home = "/tmp"
+	}
+
+	// Escape single quotes in path to avoid SQL injection in the SET command.
+	escaped := strings.ReplaceAll(home, "'", "''")
+	sql := fmt.Sprintf("SET home_directory='%s'; SET autoinstall_known_extensions=1; INSTALL json; LOAD json; INSTALL parquet; LOAD parquet", escaped)
+
+	_, err := d.db.Exec(sql)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to load DuckDB extensions")
+		log.Error().Err(err).Str("home", home).Msg("Failed to load DuckDB extensions")
 	}
 	return err
 }
