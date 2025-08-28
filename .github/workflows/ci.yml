@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Ensure DuckDB has a writable home inside the runner; tests may rely on this.
+      DUCKDB_HOME: ${{ runner.temp }}/duckdb-home
+      GOFLAGS: -mod=mod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.24.2
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ${{ env.GOMODCACHE }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Ensure DUCKDB_HOME exists
+        run: mkdir -p "${{ env.DUCKDB_HOME }}"
+
+      - name: Install system build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config
+
+      - name: Run tests
+        run: |
+          # run all tests with verbose output
+          go test ./... -v
+
+      - name: Build and run examples
+        run: |
+          # Build any example packages under ./example
+          for pkg in $(go list ./... | grep '/example' || true); do
+            echo "Building $pkg"
+            go build -v "$pkg"
+            echo "Running $pkg"
+            ./"$pkg"
+          done
