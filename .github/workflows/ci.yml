@@ -41,10 +41,5 @@ jobs:
 
       - name: Build and run examples
         run: |
-          for f in example/*.go; do
-            fname=$(basename "$f" .go)
-            echo "Building $f -> $fname"
-            go build -o "example/$fname" "$f"
-            echo "Running example/$fname"
-            "example/$fname"
-          done
+          go build -o test example/*.go
+          ./test
