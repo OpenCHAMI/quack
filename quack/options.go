@@ -2,6 +2,7 @@ package quack
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 )
@@ -56,8 +57,10 @@ func WithRestore(path string) DuckDBStorageOption {
 type createSnapshotDirOption bool
 
 func (c createSnapshotDirOption) apply(d *DuckDBStorage) error {
-	if bool(c) {
-		return os.MkdirAll(d.snapshotPath, 0755)
+	if bool(c) && d.snapshotPath != "" {
+		if err := os.MkdirAll(d.snapshotPath, 0755); err != nil {
+			return fmt.Errorf("failed to create snapshot directory '%s': %w", d.snapshotPath, err)
+		}
 	}
 	return nil
 }
@@ -78,4 +81,17 @@ func (i initTablesOption) apply(d *DuckDBStorage) error {
 
 func WithInitTables(init bool) DuckDBStorageOption {
 	return initTablesOption(init)
+}
+
+// skipExtensionsOption is an option to skip loading DuckDB extensions entirely.
+// This is useful in environments where extension loading is problematic or unnecessary.
+type skipExtensionsOption bool
+
+func (s skipExtensionsOption) apply(d *DuckDBStorage) error {
+	d.skipExtensions = bool(s)
+	return nil
+}
+
+func WithSkipExtensions(skip bool) DuckDBStorageOption {
+	return skipExtensionsOption(skip)
 }
