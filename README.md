@@ -15,7 +15,7 @@ QuackQuack is a resilient Go library for managing DuckDB databases with support 
 ## Installation
 
 ```sh
-go get github.com/OpenCHAMI/quack/quack
+go get github.com/openchami/quack/quack
 ```
 
 ## Quick Start
@@ -30,7 +30,7 @@ import (
     "log"
     "time"
 
-    "github.com/OpenCHAMI/quack/quack"
+    "github.com/openchami/quack/quack"
 )
 
 func main() {
@@ -72,7 +72,7 @@ import (
     "log"
     "time"
 
-    "github.com/OpenCHAMI/quack/quack"
+    "github.com/openchami/quack/quack"
 )
 
 func main() {
